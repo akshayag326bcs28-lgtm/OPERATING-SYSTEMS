@@ -1,0 +1,122 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/wait.h>
+
+int main()
+{
+    int pipe1[2], pipe2[2];
+
+    if (pipe(pipe1) == -1 || pipe(pipe2) == -1)
+    {
+        perror("Pipe creation failed");
+        return 1;
+    }
+
+    pid_t pid = fork();
+
+    if (pid < 0)
+    {
+        perror("Fork failed");
+        return 1;
+    }
+
+    if (pid > 0)
+    {
+        close(pipe1[0]);
+        close(pipe2[1]);
+
+        char pQuestion[50];
+        int pNumber;
+        printf("Enter an integer to calculate its digit sum: ");
+        if (scanf("%d", &pNumber) != 1) {
+            fprintf(stderr, "Invalid integer input\n");
+            return 1;
+        }
+
+        while (getchar() != '\n');
+
+        strcpy(pQuestion, "SUM");
+        write(pipe1[1], pQuestion, sizeof(pQuestion));
+        write(pipe1[1], &pNumber, sizeof(pNumber));
+
+        int pAnswer;
+        read(pipe2[0], &pAnswer, sizeof(pAnswer));
+
+        printf("\n--- Round 1 Results ---\n");
+        printf("P1: Question = Sum of digits of %d\n", pNumber);
+        printf("P2: Answer = %d\n\n", pAnswer);
+        char pString[100];
+        printf("Enter a string to reverse: ");
+        if (fgets(pString, sizeof(pString), stdin) != NULL) {
+
+            pString[strcspn(pString, "\n")] = '\0';
+        }
+
+        strcpy(pQuestion, "REVERSE");
+        write(pipe1[1], pQuestion, sizeof(pQuestion));
+        write(pipe1[1], pString, sizeof(pString));
+
+        char pReverse[100];
+        read(pipe2[0], pReverse, sizeof(pReverse));
+
+        printf("\n--- Round 2 Results ---\n");
+        printf("P1: Question = Reverse string \"%s\"\n", pString);
+        printf("P2: Answer = %s\n", pReverse);
+
+        close(pipe1[1]);
+        close(pipe2[0]);
+
+        wait(NULL);
+    }
+    else
+    {
+        close(pipe1[1]);
+        close(pipe2[0]);
+
+        char pQuestion[50];
+
+        read(pipe1[0], pQuestion, sizeof(pQuestion));
+
+        if (strcmp(pQuestion, "SUM") == 0)
+        {
+            int pNumber;
+            read(pipe1[0], &pNumber, sizeof(pNumber));
+
+            int pSum = 0;
+            while (pNumber > 0)
+            {
+                pSum += pNumber % 10;
+                pNumber /= 10;
+            }
+
+            write(pipe2[1], &pSum, sizeof(pSum));
+        }
+
+
+        read(pipe1[0], pQuestion, sizeof(pQuestion));
+
+        if (strcmp(pQuestion, "REVERSE") == 0)
+        {
+            char pString[100];
+            char pReverse[100];
+            int i;
+            read(pipe1[0], pString, sizeof(pString));
+
+            int len = strlen(pString);
+
+            for (i = 0; i < len; i++)
+            {
+                pReverse[i] = pString[len - 1 - i];
+            }
+            pReverse[len] = '\0';
+
+            write(pipe2[1], pReverse, sizeof(pReverse));
+        }
+
+        close(pipe1[0]);
+        close(pipe2[1]);
+    }
+
+    return 0;
+}
