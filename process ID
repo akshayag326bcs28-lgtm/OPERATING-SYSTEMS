@@ -1,0 +1,87 @@
+#include<stdio.h>
+#include<unistd.h>
+#include<sys/wait.h>
+int main()
+{
+   pid_t pid2,pid3,pid4,pid5,pid6,pid7;
+   pid2=fork();
+   if(pid2==0)
+   {
+      printf("Process 2 pid=%d parent pid=%d\n",getpid(),getppid());
+   }
+   else if(pid2<0)
+   {
+      perror("No process");
+   }
+   else
+   {
+      wait(NULL);
+      pid3=fork();
+      if(pid3<0)
+      {
+         perror("NO process");
+      }
+      else if(pid3==0)
+      {
+         printf("Process 3 pid=%d parent pid=%d\n",getpid(),getppid());
+         pid6=fork();
+         if(pid6<0)
+         {
+            perror("NO process");
+         }
+         else if(pid6==0)
+         {
+            printf("Process 6 pid=%d parent pid=%d\n",getpid(),getppid());
+         }
+         else
+         {
+            wait(NULL);
+            pid7=fork();
+            if(pid7<0)
+            {
+               perror("No process");
+            }
+            else if(pid7==0)
+            {
+               printf("Process 7 pid=%d parent pid=%d\n",getpid(),getppid());
+            }
+            else
+            {
+               wait(NULL);
+            }
+         }
+      }
+      else
+      {
+         wait(NULL);
+         pid4=fork();
+         if(pid4<0)
+         {
+            perror("No process");
+         }
+         else if(pid4==0)
+         {
+            printf("Process 4 pid=%d parent pid=%d\n",getpid(),getppid());
+         }
+         else
+         {
+            wait(NULL);
+            pid5=fork();
+            if(pid5<0)
+            {
+               perror("NO process");
+            }
+            else if(pid5==0)
+            {
+               printf("Process 5 pid=%d parent pid=%d\n",getpid(),getppid());
+            }
+            else
+            {
+               wait(NULL);
+               printf("Process 1 pid=%d\n",getpid());
+            }
+         }
+      }
+   }
+   return 0;
+}
