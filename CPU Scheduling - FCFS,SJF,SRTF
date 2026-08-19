@@ -1,0 +1,327 @@
+#ifndef SCHEDULING_H
+#define SCHEDULING_H
+
+struct Process {
+    int pid;
+    float at;
+    float bt;
+    float ct;
+    float tat;
+    float wt;
+    float remaining_bt;
+    int completed;
+    int priority;
+};
+
+void sortByArrival(struct Process proc[], int n);
+void printTable(struct Process proc[], int n, int execution_order[]);
+
+
+void runRoundRobin(struct Process proc[], int n, int execution_order[], float quantum);
+void runPriorityScheduling(struct Process proc[], int n, int execution_order[]);
+void runPreemptivePriorityScheduling(struct Process proc[], int n, int execution_order[]);
+#endif
+
+[24bcs130@mepcolinux ex4]$cat imp.c
+#include <stdio.h>
+#include "head.h"
+
+void sortByArrival(struct Process proc[], int n) {
+    int i, j;
+    for (i = 0; i < n - 1; i++) {
+        for (j = 0; j < n - i - 1; j++) {
+            if (proc[j].at > proc[j + 1].at) {
+                struct Process temp = proc[j];
+                proc[j] = proc[j + 1];
+                proc[j + 1] = temp;
+            }
+        }
+    }
+}
+
+void printTable(struct Process proc[], int n, int execution_order[]) {
+    float total_tat = 0, total_wt = 0;
+    int i;
+
+    printf("\nProcess\tArrival\tpriority\tBurst\tComplete\tTurnaround\tWaiting\n");
+    for (i = 0; i < n; i++) {
+        int idx = execution_order[i];
+        total_tat += proc[idx].tat;
+        total_wt += proc[idx].wt;
+        printf("P%d\t%.2f\t%.2f\t%d\t%.2f\t\t%.2f\t\t%.2f\n",
+               proc[idx].pid, proc[idx].at,proc[i].priority, proc[idx].bt, proc[idx].ct, proc[idx].tat, proc[idx].wt);
+    }
+
+    printf("\nAverage Turnaround Time = %.2f", total_tat / n);
+    printf("\nAverage Waiting Time = %.2f\n", total_wt / n);
+}
+
+
+void runRoundRobin(struct Process proc[], int n, int execution_order[], float quantum) {
+    float current_time;
+    int completed_count = 0;
+    int order_index = 0;
+    int i;
+
+    int queue[1000];
+    int front = 0, rear = 0;
+    int in_queue[1000];
+
+    sortByArrival(proc, n);
+
+    for (i = 0; i < n; i++) {
+        proc[i].remaining_bt = proc[i].bt;
+        in_queue[i] = 0;
+    }
+
+
+    current_time = proc[0].at;
+    queue[rear++] = 0;
+    in_queue[0] = 1;
+
+    while (completed_count < n) {
+
+        if (front == rear) {
+            float next_arrival = 999999.0f;
+            for (i = 0; i < n; i++) {
+                if (proc[i].remaining_bt > 0.0001f && proc[i].at < next_arrival) {
+                    next_arrival = proc[i].at;
+                }
+            }
+            current_time = next_arrival;
+            for (i = 0; i < n; i++) {
+                if (proc[i].at <= current_time && proc[i].remaining_bt > 0.0001f && in_queue[i] == 0) {
+                    queue[rear++] = i;
+                    in_queue[i] = 1;
+                }
+            }
+        }
+
+        int current = queue[front++];
+        in_queue[current] = 0;
+
+     float run_time = proc[current].remaining_bt;
+        if (run_time > quantum) {
+            run_time = quantum;
+        }
+
+        current_time += run_time;
+        proc[current].remaining_bt -= run_time;
+
+
+        for (i = 0; i < n; i++) {
+            if (proc[i].at <= current_time && proc[i].remaining_bt > 0.0001f
+                && in_queue[i] == 0 && i != current) {
+                queue[rear++] = i;
+                in_queue[i] = 1;
+            }
+        }
+
+        if (proc[current].remaining_bt > 0.0001f) {
+
+            queue[rear++] = current;
+            in_queue[current] = 1;
+        } else {
+           proc[current].ct = current_time;
+            proc[current].tat = proc[current].ct - proc[current].at;
+            proc[current].wt = proc[current].tat - proc[current].bt;
+
+            execution_order[order_index++] = current;
+            completed_count++;
+        }
+    }
+}
+
+
+void runPriorityScheduling(struct Process proc[], int n, int execution_order[]) {
+    float current_time = 0.0f;
+    int completed_count = 0;
+    int i;
+
+    sortByArrival(proc, n);
+
+    for (i = 0; i < n; i++) {
+        proc[i].completed = 0;
+    }
+
+
+    if (n > 0) {
+        current_time = proc[0].at;
+    }
+
+    while (completed_count < n) {
+        int selected = -1;
+        int best_priority = 999999;
+
+        for (i = 0; i < n; i++) {
+            if (proc[i].at <= current_time && proc[i].completed == 0) {
+                if (proc[i].priority < best_priority) {
+                    best_priority = proc[i].priority;
+                    selected = i;
+                }
+            }
+        }
+
+        if (selected == -1) {
+
+            float next_arrival = 999999.0f;
+            for (i = 0; i < n; i++) {
+                if (proc[i].completed == 0 && proc[i].at < next_arrival) {
+                    next_arrival = proc[i].at;
+                }
+            }
+            current_time = next_arrival;
+        } else {
+            proc[selected].ct = current_time + proc[selected].bt;
+            proc[selected].tat = proc[selected].ct - proc[selected].at;
+            proc[selected].wt = proc[selected].tat - proc[selected].bt;
+
+            execution_order[completed_count] = selected;
+            current_time = proc[selected].ct;
+            proc[selected].completed = 1;
+            completed_count++;
+        }
+    }
+}
+
+
+void runPreemptivePriorityScheduling(struct Process proc[], int n, int execution_order[]) {
+    float current_time = 0.0f;
+    int completed_count = 0;
+    int i;
+
+
+    float remaining_time[1000];
+
+    sortByArrival(proc, n);
+
+    for (i = 0; i < n; i++) {
+        remaining_time[i] = proc[i].bt;
+        proc[i].completed = 0;
+    }
+
+    if (n > 0) {
+        current_time = proc[0].at;
+    }
+
+    while (completed_count < n) {
+        int selected = -1;
+        int best_priority = 999999;
+
+
+        for (i = 0; i < n; i++) {
+            if (proc[i].at <= current_time && proc[i].completed == 0) {
+                if (proc[i].priority < best_priority) {
+                    best_priority = proc[i].priority;
+                    selected = i;
+                }
+            }
+        }
+
+        if (selected == -1) {
+
+            float next_arrival = 999999.0f;
+            for (i = 0; i < n; i++) {
+                if (proc[i].completed == 0 && proc[i].at < next_arrival) {
+                    next_arrival = proc[i].at;
+                }
+            }
+            current_time = next_arrival;
+        } else {
+
+            float next_event_time = current_time + remaining_time[selected];
+
+            for (i = 0; i < n; i++) {
+                if (proc[i].completed == 0 && proc[i].at > current_time && proc[i].at < next_event_time) {
+                    next_event_time = proc[i].at;
+                }
+            }
+
+
+            float time_step = next_event_time - current_time;
+            remaining_time[selected] -= time_step;
+            current_time = next_event_time;
+
+
+            if (remaining_time[selected] <= 0.0001f) {
+                proc[selected].ct = current_time;
+                proc[selected].tat = proc[selected].ct - proc[selected].at;
+                proc[selected].wt = proc[selected].tat - proc[selected].bt;
+
+                proc[selected].completed = 1;
+
+                execution_order[completed_count] = selected;
+                completed_count++;
+            }
+        }
+    }
+}
+
+[24bcs130@mepcolinux ex4]$cat app.c
+#include <stdio.h>
+#include "head.h"
+
+int main() {
+    int n, i, choice;
+    float quantum = 0;
+
+    printf("CPU Scheduling Algorithms\n");
+    printf("1. Round Robin\n");
+    printf("2. Priority Scheduling (non-preemptive)\n");
+    printf("3. Priority Scheduling (preemptive)\n");
+    printf("Enter your choice: ");
+    scanf("%d", &choice);
+
+    printf("Enter number of processes: ");
+    scanf("%d", &n);
+
+    struct Process proc[n];
+    int execution_order[n];
+
+    printf("Enter Arrival Time and Burst Time for each process:\n");
+    for (i = 0; i < n; i++) {
+        proc[i].pid = i + 1;
+        printf("P%d Arrival Time: ", i + 1);
+        scanf("%f", &proc[i].at);
+        printf("P%d Burst Time: ", i + 1);
+        scanf("%f", &proc[i].bt);
+
+
+        if (choice == 2 || choice == 3) {
+            printf("P%d Priority (lower number = higher priority): ", i + 1);
+            scanf("%d", &proc[i].priority);
+        }
+    }
+
+
+    if (choice == 1) {
+        printf("Enter Time Quantum: ");
+        scanf("%f", &quantum);
+    }
+
+    switch (choice) {
+        case 1:
+            printf("\n--- Round Robin Scheduling (Quantum = %.2f) ---\n", quantum);
+            runRoundRobin(proc, n, execution_order, quantum);
+            printTable(proc, n, execution_order);
+            break;
+
+        case 2:
+            printf("\n--- Priority Scheduling (Non-Preemptive) ---\n");
+            runPriorityScheduling(proc, n, execution_order);
+            printTable(proc, n, execution_order);
+            break;
+
+        case 3:
+            printf("\n--- Priority Scheduling (Preemptive) ---\n");
+            runPreemptivePriorityScheduling(proc, n, execution_order);
+            printTable(proc, n, execution_order);
+            break;
+
+        default:
+            printf("Invalid choice!\n");
+            return 1;
+    }
+
+    return 0;
+}
