@@ -1,0 +1,114 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+int main()
+{
+    pid_t p2, p3, p4, p5, p6, p7;
+
+    printf("P1 Process ID: %d\n", getpid());
+
+    // Create P2
+    p2 = fork();
+
+    if (p2 < 0)
+    {
+        perror("Fork failed to create P2");
+        exit(1);
+    }
+    else if (p2 == 0)
+    {
+        printf("P2 Process ID: %d Parent ID: %d\n", getpid(), getppid());
+
+        // Create P4
+        p4 = fork();
+
+        if (p4 < 0)
+        {
+            perror("Fork failed to create P4");
+            exit(1);
+        }
+        else if (p4 == 0)
+        {
+            printf("P4 Process ID: %d Parent ID: %d\n", getpid(), getppid());
+
+            // Create P5
+            p5 = fork();
+
+            if (p5 < 0)
+            {
+                perror("Fork failed to create P5");
+                exit(1);
+            }
+            else if (p5 == 0)
+            {
+                printf("P5 Process ID: %d Parent ID: %d\n", getpid(), getppid());
+            }
+            else
+            {
+                wait(NULL);
+            }
+        }
+        else
+        {
+            wait(NULL);
+        }
+    }
+    else
+    {
+        // Create P3
+        p3 = fork();
+
+        if (p3 < 0)
+        {
+            perror("Fork failed to create P3");
+            exit(1);
+        }
+        else if (p3 == 0)
+        {
+            printf("P3 Process ID: %d Parent ID: %d\n", getpid(), getppid());
+
+            // Create P6
+            p6 = fork();
+
+            if (p6 < 0)
+            {
+                perror("Fork failed to create P6");
+                exit(1);
+            }
+            else if (p6 == 0)
+            {
+                printf("P6 Process ID: %d Parent ID: %d\n", getpid(), getppid());
+            }
+            else
+            {
+                wait(NULL);
+
+                // Create P7
+                p7 = fork();
+
+                if (p7 < 0)
+                {
+                    perror("Fork failed to create P7");
+                    exit(1);
+                }
+                else if (p7 == 0)
+                {
+                    printf("P7 Process ID: %d Parent ID: %d\n", getpid(), getppid());
+                }
+                else
+                {
+                    wait(NULL);
+                }
+            }
+        }
+        else
+        {
+            wait(NULL);
+            wait(NULL);
+        }
+    }
+
+    return 0;
+}
