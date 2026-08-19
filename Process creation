@@ -1,0 +1,46 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<sys/types.h>
+#include<sys/wait.h>
+#include<unistd.h>
+int main()
+{
+   pid_t pid1,pid2;
+   pid1=fork();
+   if(pid1<0)
+   {
+      perror("Process creation failed");
+      exit(1);
+   }
+   if(pid1 ==0)
+   {
+      printf("P2 process\n");
+      printf("PID:%d\n",getpid());
+      printf("Parent PID:%d\n",getppid());
+      pid2=fork();
+      if(pid2<0)
+      {
+         perror("Process creation failed");
+         exit(1);
+      }
+      if(pid2==0)
+      {
+         printf("P3 Process\n");
+         printf("PID:%d\n",getpid());
+         printf("Parent PID:%d\n",getppid());
+      }
+      else
+      {
+         wait(NULL);
+      }
+   }
+      else
+      {
+
+      wait(NULL);
+      printf("P1 Process\n");
+      printf("PID:%d\n",getpid());
+      printf("Parent PID:%d\n",getppid());
+      }
+   return 0;
+}
