@@ -1,0 +1,65 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+int main()
+{
+    pid_t pid1, pid2;
+    int n = 10;
+    int sum = 0;
+    int i;
+    pid1 = fork();
+    if (pid1 < 0)
+    {
+        perror("First fork failed");
+        exit(1);
+    }
+
+    if (pid1 == 0)
+    {
+
+        printf("\n[P2 Process] PID: %d, Parent PID: %d\n", getpid(), getppid());
+        for (i = 1; i <= n; i+=2)
+        {
+
+
+                sum += i;
+
+        }
+        printf("[P2 Process] Sum of odd numbers up to %d is: %d\n", n, sum);
+        exit(0);
+    }
+    pid2 = fork();
+
+    if (pid2 < 0)
+    {
+        perror("Second fork failed");
+        exit(1);
+    }
+
+    if (pid2 == 0)
+    {
+
+        printf("\n[P3 Process] PID: %d, Parent PID: %d\n", getpid(), getppid());
+        for (i = 2; i <= n; i+=2)
+        {
+
+                sum += i;
+
+        }
+        printf("[P3 Process] Sum of even numbers up to %d is: %d\n", n, sum);
+        exit(0);
+    }
+    wait(NULL);
+    wait(NULL);
+    printf("\n[P1 Process] PID: %d, Parent PID: %d\n", getpid(), getppid());
+    for (i = 1; i <= n; i++)
+    {
+        sum += i;
+    }
+    printf("[P1 Process] Total sum of numbers up to %d is: %d\n", n, sum);
+
+    return 0;
+}
