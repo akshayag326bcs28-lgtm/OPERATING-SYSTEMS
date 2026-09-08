@@ -1,0 +1,73 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+#define SIZE 100
+#define KEY_FILE "ipc_key"
+#define PROJECT_ID 'A'
+
+struct message
+{
+    long msg_type;
+    char text[SIZE];
+};
+
+int main()
+{
+    key_t key;
+    int msgid;
+    struct message msg;
+
+
+    FILE *fp = fopen(KEY_FILE, "a");
+
+    if (fp == NULL)
+    {
+        perror("Producer: fopen");
+        return 1;
+    }
+
+    fclose(fp);
+
+
+    key = ftok(KEY_FILE, PROJECT_ID);
+
+    if (key == -1)
+    {
+        perror("Producer: ftok");
+        return 1;
+    }
+
+
+    msgid = msgget(key, 0666 | IPC_CREAT);
+
+    if (msgid == -1)
+    {
+        perror("Producer: msgget");
+        return 1;
+    }
+
+    msg.msg_type = 1;
+
+    printf("Producer: Enter a sentence: ");
+    fflush(stdout);
+
+    if (fgets(msg.text, SIZE, stdin) == NULL)
+    {
+        perror("Producer: fgets");
+        return 1;
+    }
+
+    /* Send message */
+    if (msgsnd(msgid, &msg, sizeof(msg.text), 0) == -1)
+    {
+        perror("Producer: msgsnd");
+        return 1;
+    }
+
+    printf("Producer: Message sent successfully.\n");
+
+    return 0;
+}
