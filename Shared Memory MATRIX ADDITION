@@ -1,0 +1,141 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/wait.h>
+
+#define MAX 10
+
+int main()
+{
+    int shmid;
+    int *shared_memory;
+    int rows, cols;
+    int i, j;
+
+    // Create shared memory
+    shmid = shmget(IPC_PRIVATE,
+                   sizeof(int) * (2 * MAX * MAX + 3),
+                   IPC_CREAT | 0666);
+
+    if (shmid == -1)
+    {
+        printf("Shared memory creation failed\n");
+        return 1;
+    }
+
+    // Attach shared memory
+    shared_memory = (int *)shmat(shmid, NULL, 0);
+
+    if (shared_memory == (int *)-1)
+    {
+        printf("Shared memory attachment failed\n");
+        return 1;
+    }
+
+    // Flag = 0 means matrices are not ready
+    shared_memory[0] = 0;
+
+    // Create child process
+    pid_t pid = fork();
+
+    if (pid < 0)
+    {
+        printf("Process creation failed\n");
+        return 1;
+    }
+
+    // ================= P1 : PARENT =================
+    if (pid > 0)
+    {
+        printf("Enter number of rows: ");
+        fflush(stdout);
+        scanf("%d", &rows);
+
+        printf("Enter number of columns: ");
+        fflush(stdout);
+        scanf("%d", &cols);
+
+        // Store rows and columns
+        shared_memory[1] = rows;
+        shared_memory[2] = cols;
+
+        printf("\nEnter Matrix A:\n");
+
+        for (i = 0; i < rows; i++)
+        {
+            for (j = 0; j < cols; j++)
+            {
+                scanf("%d",
+                      &shared_memory[3 + i * cols + j]);
+            }
+        }
+
+        printf("\nEnter Matrix B:\n");
+
+        for (i = 0; i < rows; i++)
+        {
+            for (j = 0; j < cols; j++)
+            {
+                scanf("%d",
+                      &shared_memory[3 + rows * cols
+                      + i * cols + j]);
+            }
+        }
+
+        // Tell child that matrices are ready
+        shared_memory[0] = 1;
+
+        printf("\nP1: Matrices stored in shared memory.\n");
+
+        // Wait for P2
+        wait(NULL);
+
+        // Detach shared memory
+        shmdt(shared_memory);
+
+        // Remove shared memory
+        shmctl(shmid, IPC_RMID, NULL);
+    }
+
+    // ================= P2 : CHILD =================
+    else
+    {
+        // Wait until P1 stores both matrices
+        while (shared_memory[0] == 0)
+        {
+            usleep(10000);
+        }
+
+        // Read rows and columns
+        rows = shared_memory[1];
+        cols = shared_memory[2];
+
+        printf("\nP2: Sum of the two matrices:\n");
+
+        for (i = 0; i < rows; i++)
+        {
+            for (j = 0; j < cols; j++)
+            {
+                int matrixA =
+                    shared_memory[3 + i * cols + j];
+
+                int matrixB =
+                    shared_memory[3 + rows * cols
+                    + i * cols + j];
+
+                printf("%d ", matrixA + matrixB);
+            }
+
+            printf("\n");
+        }
+
+        // Detach shared memory
+        shmdt(shared_memory);
+
+        exit(0);
+    }
+
+    return 0;
+}
