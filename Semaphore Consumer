@@ -1,0 +1,134 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <unistd.h>
+
+#define SIZE 5
+#define MUTEX 0
+#define EMPTY 1
+#define FULL  2
+
+struct SharedData {
+    char buffer[SIZE];
+    int in;
+    int out;
+};
+
+union semun {
+    int val;
+    struct semid_ds *buf;
+    unsigned short *array;
+};
+
+int wait_sem(int semid, int semnum) {
+    struct sembuf operation;
+    operation.sem_num = semnum;
+    operation.sem_op = -1;
+    operation.sem_flg = 0;
+    return semop(semid, &operation, 1);
+}
+
+int signal_sem(int semid, int semnum) {
+    struct sembuf operation;
+    operation.sem_num = semnum;
+    operation.sem_op = 1;
+    operation.sem_flg = 0;
+    return semop(semid, &operation, 1);
+}
+
+int main(void) {
+    int shmid;
+    int semid;
+    key_t shm_key;
+    key_t sem_key;
+    struct SharedData *data;
+
+    shm_key = ftok(".", 'S');
+    sem_key = ftok(".", 'M');
+
+    if (shm_key == -1 || sem_key == -1) {
+        perror("ftok");
+        return EXIT_FAILURE;
+    }
+
+    shmid = shmget(shm_key, sizeof(struct SharedData), 0666);
+    if (shmid == -1) {
+        perror("shmget (Is the producer running?)");
+        return EXIT_FAILURE;
+    }
+
+    data = shmat(shmid, NULL, 0);
+    if (data == (void *)-1) {
+        perror("shmat");
+        return EXIT_FAILURE;
+    }
+
+    semid = semget(sem_key, 3, 0666);
+    if (semid == -1) {
+        perror("semget");
+        shmdt(data);
+        return EXIT_FAILURE;
+    }
+
+    printf("Consumer started reading from fixed size %d channel structures...\n", SIZE);
+
+    int running = 1;
+    while (running) {
+        char ch;
+
+        if (wait_sem(semid, FULL) == -1) {
+            perror("wait FULL");
+            break;
+        }
+        if (wait_sem(semid, MUTEX) == -1) {
+            perror("wait MUTEX");
+            break;
+        }
+
+        ch = data->buffer[data->out];
+        data->out = (data->out + 1) % SIZE;
+
+        if (signal_sem(semid, MUTEX) == -1) {
+            perror("signal MUTEX");
+            break;
+        }
+        if (signal_sem(semid, EMPTY) == -1) {
+            perror("signal EMPTY");
+            break;
+        }
+
+        if (ch == '\0') {
+            printf("Consumer detected end-of-string system termination. Exiting.\n");
+            running = 0;
+            continue;
+        }
+
+        if (ch == ' ') {
+            printf("Consumer read: [Space] -> ASCII value: %d\n", (unsigned char)ch);
+        } else {
+            printf("Consumer read: '%c' -> ASCII value: %d\n", ch, (unsigned char)ch);
+        }
+
+        sleep(1);
+    }
+
+    shmdt(data);
+
+    if (shmctl(shmid, IPC_RMID, NULL) == -1) {
+        if (errno != EINVAL) perror("shmctl IPC_RMID");
+    } else {
+        printf("Shared memory segment clean.\n");
+    }
+
+    if (semctl(semid, 0, IPC_RMID) == -1) {
+        if (errno != EINVAL) perror("semctl IPC_RMID");
+    } else {
+        printf("Semaphore set clean.\n");
+    }
+
+    printf("Consumer finished and cleaned up IPC resources.\n");
+    return EXIT_SUCCESS;
+}
