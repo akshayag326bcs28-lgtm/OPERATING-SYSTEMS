@@ -1,0 +1,188 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <unistd.h>
+
+#define SIZE 5
+#define MUTEX 0
+#define EMPTY 1
+#define FULL 2
+#define STOP_CHAR 'X'
+
+struct SharedData {
+    char buffer[SIZE];
+    int in;
+    int out;
+};
+
+union semun {
+    int val;
+    struct semid_ds *buf;
+    unsigned short *array;
+};
+
+int wait_sem(int semid, int semnum) {
+    struct sembuf operation;
+    operation.sem_num = semnum;
+    operation.sem_op = -1;
+    operation.sem_flg = 0;
+    return semop(semid, &operation, 1);
+}
+
+int signal_sem(int semid, int semnum) {
+    struct sembuf operation;
+    operation.sem_num = semnum;
+    operation.sem_op = 1;
+    operation.sem_flg = 0;
+    return semop(semid, &operation, 1);
+}
+
+int main(void) {
+    int shmid;
+    int semid;
+    key_t shm_key;
+    key_t sem_key;
+    struct SharedData *data;
+    union semun argument;
+    int ch;
+    int shm_existed = 0;
+    int sem_existed = 0;
+
+    shm_key = ftok(".", 'S');
+    sem_key = ftok(".", 'M');
+
+    if (shm_key == -1 || sem_key == -1) {
+        perror("ftok");
+        return EXIT_FAILURE;
+    }
+
+    shmid = shmget(shm_key, sizeof(struct SharedData), IPC_CREAT | IPC_EXCL | 0666);
+    if (shmid == -1) {
+        if (errno == EEXIST) {
+            shm_existed = 1;
+            shmid = shmget(shm_key, sizeof(struct SharedData), 0666);
+            if (shmid == -1) {
+                perror("shmget reconnect failed");
+                return EXIT_FAILURE;
+            }
+        } else {
+            perror("shmget");
+            return EXIT_FAILURE;
+        }
+    }
+
+    data = shmat(shmid, NULL, 0);
+    if (data == (void *)-1) {
+        perror("shmat");
+        if (!shm_existed) shmctl(shmid, IPC_RMID, NULL);
+        return EXIT_FAILURE;
+    }
+
+    if (!shm_existed) {
+        data->in = 0;
+        data->out = 0;
+    }
+
+    semid = semget(sem_key, 3, IPC_CREAT | IPC_EXCL | 0666);
+    if (semid == -1) {
+        if (errno == EEXIST) {
+            sem_existed = 1;
+            semid = semget(sem_key, 3, 0666);
+            if (semid == -1) {
+                perror("semget reconnect failed");
+                shmdt(data);
+                return EXIT_FAILURE;
+            }
+        } else {
+            perror("semget");
+            shmdt(data);
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (!sem_existed) {
+        argument.val = 1;
+        semctl(semid, MUTEX, SETVAL, argument);
+        argument.val = SIZE;
+        semctl(semid, EMPTY, SETVAL, argument);
+        argument.val = 0;
+        semctl(semid, FULL, SETVAL, argument);
+    }
+
+    printf("Producer session started. Type '%c' to completely finish and terminate.\n", STOP_CHAR);
+
+    while (1) {
+        printf("enter a character : ");
+        fflush(stdout);
+
+        ch = getchar();
+
+        /* Ignore direct newline taps */
+        if (ch == '\n') {
+            continue;
+        }
+
+        char char_to_send;
+        int must_terminate = 0;
+
+        if (ch == STOP_CHAR || ch == EOF) {
+            printf("\nStop command detected! Sending termination signal to consumer...\n");
+            char_to_send = '\0';
+            must_terminate = 1;
+            /* Clear any trailing items in the terminal line buffer */
+            int extra;
+            while ((extra = getchar()) != '\n' && extra != EOF);
+        } else {
+            char_to_send = (char)ch;
+        }
+
+        /* Enforce fixed buffer size limit (Pauses right here if buffer holds 5 items) */
+        if (wait_sem(semid, EMPTY) == -1) {
+            perror("wait EMPTY");
+            break;
+        }
+        if (wait_sem(semid, MUTEX) == -1) {
+            perror("wait MUTEX");
+            break;
+        }
+
+        data->buffer[data->in] = char_to_send;
+        data->in = (data->in + 1) % SIZE;
+
+        if (must_terminate) {
+            printf("Producer queued system termination signal [\\0]\n");
+        } else {
+            printf("Producer produced: '%c'\n", char_to_send);
+        }
+
+        if (signal_sem(semid, MUTEX) == -1) {
+            perror("signal MUTEX");
+            break;
+        }
+        if (signal_sem(semid, FULL) == -1) {
+            perror("signal FULL");
+            break;
+        }
+
+        if (must_terminate) {
+            break;
+        }
+
+        /* REMOVED: sleep(1) has been deleted to allow prompt handling without terminal desync */
+    }
+
+    shmdt(data);
+
+    if (semctl(semid, 0, IPC_RMID) == -1) {
+        if (errno != EINVAL) perror("semctl IPC_RMID");
+    } else {
+        printf("Semaphore set cleaned up successfully by Producer.\n");
+    }
+
+    printf("Producer finished feeding data.\n");
+    return EXIT_SUCCESS;
+}
